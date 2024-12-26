@@ -1,14 +1,12 @@
 const std = @import("std");
-
+pub const AllocationHeader = struct {
+    size: usize,
+    is_free: bool,
+    required_alignment: usize,
+};
 pub const FixedBufferAllocator = struct {
     buffer: []u8,
     used: usize,
-    allocation_headers: []AllocationHeader,
-    const AllocationHeader = struct {
-        size: usize,
-        is_free: bool,
-        alignment: usize,
-    };
 
     pub fn init(buffer: []u8) FixedBufferAllocator {
         return .{ .buffer = buffer, .used = 0 };
@@ -34,25 +32,25 @@ pub const FixedBufferAllocator = struct {
             if (header.is_free and header.size >= size) {
                 header.is_free = false;
                 header.size = size;
-                header.alignment = alignment;
+                header.required_alignment = alignment;
 
                 const data_start = current_offset + header_size;
-                const aligned_start = std.mem.alignForward(@intFromPtr(&self.buffer[data_start]), alignment);
+                const aligned_start = std.mem.alignForward(usize, @intFromPtr(&self.buffer[data_start]), alignment);
                 const padding = aligned_start - @intFromPtr(&self.buffer[data_start]);
                 return self.buffer[data_start + padding .. data_start + padding + size];
             }
             current_offset += header_size + header.size;
+            current_offset = std.mem.alignForward(usize, current_offset, @alignOf(AllocationHeader));
         }
 
         if (current_offset + total_size > self.buffer.len) {
             return null;
         }
-
         const header = @as(*AllocationHeader, @ptrCast(@alignCast(&self.buffer[current_offset])));
-        header.* = .{ .size = size, .is_free = false, .alignment = alignment };
+        header.* = .{ .size = size, .is_free = false, .required_alignment = alignment };
 
         const data_start = current_offset + header_size;
-        const aligned_start = std.mem.alignForward(@intFromPtr(&self.buffer[data_start]), alignment);
+        const aligned_start = std.mem.alignForward(usize, data_start, alignment);
         const padding = aligned_start - data_start;
 
         self.used = current_offset + total_size + padding;
@@ -65,7 +63,7 @@ pub const FixedBufferAllocator = struct {
             const header = @as(*AllocationHeader, @ptrCast(@alignCast(&self.buffer[current_offset])));
             const data_start = current_offset + @sizeOf(AllocationHeader);
 
-            const aligned_start = std.mem.alignForward(@intFromPtr(self.buffer[data_start]), header.alignment);
+            const aligned_start = std.mem.alignForward(usize, @intFromPtr(&self.buffer[data_start]), header.required_alignment);
             const padding = aligned_start - data_start;
 
             if (aligned_start == @intFromPtr(&memory[0])) {
@@ -73,7 +71,7 @@ pub const FixedBufferAllocator = struct {
                 return;
             }
 
-            current_offset += @sizeOf(header) + padding + header.size;
+            current_offset += @sizeOf(AllocationHeader) + padding + header.size;
         }
     }
 };
