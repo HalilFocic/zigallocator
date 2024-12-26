@@ -13,3 +13,16 @@ test "basic allocation" {
     };
     try testing.expectEqual(@as(usize, 100), memory.len);
 }
+
+test "aligned allocation" {
+    var buffer: [100]u8 = undefined;
+    var allocator = FixedBufferAllocator.init(&buffer);
+
+    const memory = allocator.alignedAlloc(10, 4) orelse {
+        try testing.fail("failed to allocate memory");
+        return;
+    };
+
+    const addr = @intFromPtr(&memory[0]);
+    try testing.expect(addr % 4 == 0);
+}
