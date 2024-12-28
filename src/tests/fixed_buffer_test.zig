@@ -48,3 +48,18 @@ test "allocation and deallocation" {
     try testing.expect(@intFromPtr(&mem3[0]) % 8 == 0);
     try testing.expect(mem3.len == 45);
 }
+
+test "merge free blocks - adjacent blocks" {
+    var buffer: [300]u8 align(@alignOf(AllocationHeader)) = undefined;
+    var first_header = @as(*AllocationHeader, @ptrCast(@alignCast(&buffer[0])));
+    var allocator = FixedBufferAllocator.init(&buffer);
+    _ = allocator.alignedAlloc(50, 8) orelse return error.TestFailed;
+    first_header = @as(*AllocationHeader, @ptrCast(@alignCast(&buffer[0])));
+    const mem2 = allocator.alignedAlloc(50, 8) orelse return error.TestFailed;
+    const mem3 = allocator.alignedAlloc(50, 8) orelse return error.TestFailed;
+    allocator.free(mem2);
+    allocator.free(mem3);
+
+    const large_mem = allocator.alignedAlloc(90, 8) orelse return error.TestFailed;
+    try testing.expect(large_mem.len == 90);
+}

@@ -67,9 +67,24 @@ pub const FixedBufferAllocator = struct {
                         header.size += @sizeOf(AllocationHeader) + next_header.size + next_padding;
                     }
                 }
+
+                var prev_offset: usize = 0;
+                while (prev_offset < current_offset) {
+                    const prev_header = @as(*AllocationHeader, @ptrCast(@alignCast(&self.buffer[prev_offset])));
+                    const prev_data_start = prev_offset + @sizeOf(AllocationHeader);
+                    const prev_aligned_start = std.mem.alignForward(usize, prev_data_start, prev_header.required_alignment);
+                    const prev_padding = prev_aligned_start - prev_data_start;
+                    const block_size = @sizeOf(AllocationHeader) + prev_padding + prev_header.size;
+
+                    const next_start = std.mem.alignForward(usize, prev_offset + block_size, @alignOf(AllocationHeader));
+                    if (next_start == current_offset and prev_header.is_free) {
+                        prev_header.size += @sizeOf(AllocationHeader) + padding + header.size;
+                        break;
+                    }
+                    prev_offset = std.mem.alignForward(usize, prev_offset + block_size, @alignOf(AllocationHeader));
+                }
                 return;
             }
-
             current_offset = std.mem.alignForward(usize, current_offset + @sizeOf(AllocationHeader) + header.size, @alignOf(AllocationHeader));
         }
     }
