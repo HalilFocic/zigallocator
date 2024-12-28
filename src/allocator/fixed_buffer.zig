@@ -12,16 +12,6 @@ pub const FixedBufferAllocator = struct {
         return .{ .buffer = buffer, .used = 0 };
     }
 
-    pub fn alloc(self: *FixedBufferAllocator, size: usize) ?[]u8 {
-        if (self.used + size > self.buffer.len) {
-            return null;
-        }
-
-        const start = self.used;
-        self.used += size;
-        return self.buffer[start .. start + size];
-    }
-
     pub fn alignedAlloc(self: *FixedBufferAllocator, size: usize, alignment: usize) ?[]u8 {
         const header_size = @sizeOf(AllocationHeader);
         const total_size = header_size + size;
@@ -62,16 +52,25 @@ pub const FixedBufferAllocator = struct {
         while (current_offset < self.used) {
             const header = @as(*AllocationHeader, @ptrCast(@alignCast(&self.buffer[current_offset])));
             const data_start = current_offset + @sizeOf(AllocationHeader);
-
-            const aligned_start = std.mem.alignForward(usize, @intFromPtr(&self.buffer[data_start]), header.required_alignment);
+            const aligned_start = std.mem.alignForward(usize, @intFromPtr(&self.buffer[data_start]), header.required_alignment) - @intFromPtr(&self.buffer[0]);
             const padding = aligned_start - data_start;
 
-            if (aligned_start == @intFromPtr(&memory[0])) {
+            if (@intFromPtr(&self.buffer[aligned_start]) == @intFromPtr(&memory[0])) {
                 header.is_free = true;
+                const next_offset = std.mem.alignForward(usize, current_offset + @sizeOf(AllocationHeader) + padding + header.size, @alignOf(AllocationHeader));
+                if (next_offset < self.used) {
+                    const next_header = @as(*AllocationHeader, @ptrCast(@alignCast(&self.buffer[next_offset])));
+                    if (next_header.is_free) {
+                        const next_data_start = next_offset + @sizeOf(AllocationHeader);
+                        const next_aligned_start = std.mem.alignForward(usize, @intFromPtr(&self.buffer[next_data_start]), next_header.required_alignment);
+                        const next_padding = next_aligned_start - @intFromPtr(&self.buffer[next_data_start]);
+                        header.size += @sizeOf(AllocationHeader) + next_header.size + next_padding;
+                    }
+                }
                 return;
             }
 
-            current_offset += @sizeOf(AllocationHeader) + padding + header.size;
+            current_offset = std.mem.alignForward(usize, current_offset + @sizeOf(AllocationHeader) + header.size, @alignOf(AllocationHeader));
         }
     }
 };
